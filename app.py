@@ -6,22 +6,35 @@ from urllib.parse import urlparse, urljoin
 app = Flask(__name__)
 
 def get_favicon_url(website_url):
-    # Send a GET request to the website
     response = requests.get(website_url)
     
     if response.status_code != 200:
         return None
     
-    # Parse the website's HTML content
     soup = BeautifulSoup(response.text, 'html.parser')
     
-    # Try to find the link to the favicon in the HTML <head> section
-    link_tag = soup.find("link", rel=lambda rel: rel and 'icon' in rel.lower())
+    # Priority order: high-res icons first, fallback to /favicon.ico
+    rel_priorities = [
+        'apple-touch-icon',
+        'apple-touch-icon-precomposed',
+        'icon',
+        'shortcut icon',
+    ]
     
-    if link_tag and 'href' in link_tag.attrs:
-        # Resolve the favicon URL (it could be relative, so we use urljoin)
-        favicon_url = urljoin(website_url, link_tag.attrs['href'])
-        return favicon_url
+    for rel in rel_priorities:
+        link_tag = soup.find("link", rel=lambda r, rel=rel: r and rel in ' '.join(r).lower())
+        if link_tag and 'href' in link_tag.attrs:
+            return urljoin(website_url, link_tag.attrs['href'])
+    
+    # Final fallback: try /favicon.ico directly
+    parsed = urlparse(website_url)
+    fallback = f"{parsed.scheme}://{parsed.netloc}/favicon.ico"
+    try:
+        r = requests.head(fallback, timeout=3)
+        if r.status_code == 200:
+            return fallback
+    except requests.RequestException:
+        pass
     
     return None
 
